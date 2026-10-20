@@ -1,15 +1,24 @@
 Bundled third-party skills
 ==========================
 
-The 11 skill directories in this folder (`nature-*`) are vendored verbatim from
+1. The 11 skill directories named `nature-*` are vendored verbatim from
 
-  https://github.com/Yuan1z0825/nature-skills
+     https://github.com/Yuan1z0825/nature-skills
 
-Copyright the nature-skills authors and contributors.
+   Copyright the nature-skills authors and contributors. They are licensed
+   under the Apache License, Version 2.0; a copy of the license ships alongside
+   them in `LICENSE.apache-2.0`.
 
-They are licensed under the Apache License, Version 2.0; a copy of the license
-ships alongside them in `LICENSE.apache-2.0`. They are distributed here
-unmodified except for the removal of VCS metadata. If a `NOTICE` file is added
-upstream, it must be retained here.
+2. `academic-humanizer/` is vendored from
+
+     https://github.com/AIScientists-Dev/academic-humanizer
+
+   Copyright (c) 2026 AIScientists-Dev, licensed under the MIT license; a copy
+   ships in `academic-humanizer/LICENSE`. Its upstream README notes it builds
+   on "humanizer" by blader (MIT) and adopts standards from "ARMS".
+
+All are distributed here unmodified except for the removal of VCS metadata and
+non-functional promotional image assets. If a `NOTICE` file is added upstream,
+it must be retained here.
 
 All other files in this repository remain under the MIT license (see LICENSE).

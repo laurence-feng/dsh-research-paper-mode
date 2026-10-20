@@ -20,7 +20,7 @@ New-Session agent-preset selector.
 | 文档润色 | 本包提供的 `paper_polish`（用当前会话模型改写，分段处理长文，返回修改说明） |
 | 学术规范自查 | 本包提供的 `paper_style_check`（中英双规则，确定性、可复现、带字符偏移） |
 | 参考文献格式化 | 本包提供的 `citation_format`（BibTeX → APA / IEEE / GB-T 7714 / Nature / MLA / Chicago） |
-| 内置科研技能 | 11 个随包安装的 nature-* skills（精读、写作、润色、做 PPT、核验引文、申请书等，见第 2.5 节） |
+| 内置科研技能 | 12 个随包安装的 skills（精读、写作、润色、做 PPT、核验引文、申请书等，见第 2.5 节） |
 | 写作工作流 | 一段写入系统提示词的方法论（检索 → 提纲 → 成稿 → 润色 → 自查 → 参考文献） |
 | 人设 | `@deepseek-ai/dsh-persona`：科研写作助手，含「不得编造文献」的引用纪律 |
 
@@ -85,15 +85,17 @@ citation_format({ references, style, sort })
 - 非 BibTeX 输入（裸 URL、自由格式）**原样保留**并写入 `warnings`，
   绝不猜测缺失的年份、卷期或 DOI。
 
-## 2.5 内置科研技能（nature-* skills）
+## 2.5 内置科研技能（skills）
 
-模式随包内置 11 个技能，原样 vendor 自
-[Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)（Apache-2.0，
-见 `skills/NOTICE` 与 `skills/LICENSE.apache-2.0`）。装包即得，无需任何额外安装；
+模式随包内置 12 个技能，原样 vendor 自
+[Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)（Apache-2.0）
+与 [AIScientists-Dev/academic-humanizer](https://github.com/AIScientists-Dev/academic-humanizer)（MIT），
+见 `skills/NOTICE` 与各技能目录内的 LICENSE。装包即得，无需任何额外安装；
 选中本模式的会话会自动在技能目录里看到它们：
 
 | 技能 | 用途 |
 |---|---|
+| `academic-humanizer` | AI 辅助学术文稿 / 基金申请书的行文与语气打磨：贴合作者本人风格，绝不改动数字、结果或引用（非规避 AI 披露工具） |
 | `nature-academic-search` | 多源文献检索、引文核对、参考文献管理、MeSH 策略、严格他引审计 |
 | `nature-reader` | 全文翻译 / 中英文对照 / 论文精读，生成出处可溯的 reader |
 | `nature-paper-xray` | 单篇论文深读：还原作者的真实起点与设计取舍，公式落到具体例子 |
@@ -217,7 +219,7 @@ lib/polish.js           润色提示词构造、结果解析、流式调用
 lib/citation.js         BibTeX 解析与六种引用风格
 lib/kimi.js             Kimi（Moonshot）联网搜索 provider（见第 2.6 节）
 lib/bundled-skills.js   内置 skills 清单与 provider（见第 2.5 节）
-skills/                 11 个 vendored nature-* skills（Apache-2.0，见 skills/NOTICE）
+skills/                 12 个 vendored skills（11 个 nature-* 为 Apache-2.0、academic-humanizer 为 MIT，见 skills/NOTICE）
 tools/*.js              四个工具的注册与执行
 locale/en.json, zh.json Plugin Manager 中显示的标题与描述
 icon.svg                模式图标
@@ -226,7 +228,9 @@ test/run.mjs            测试
 
 ## 8. 许可
 
-本包自身代码为 MIT，见 [LICENSE](./LICENSE)。`skills/` 目录下的 11 个
-nature-* 技能来自 [Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)，
-按 Apache-2.0 许可分发，见 [skills/NOTICE](./skills/NOTICE) 与
-[skills/LICENSE.apache-2.0](./skills/LICENSE.apache-2.0)。
+本包自身代码为 MIT，见 [LICENSE](./LICENSE)。`skills/` 目录下的 vendored 技能：
+11 个 nature-* 技能来自 [Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)
+（Apache-2.0，见 [skills/LICENSE.apache-2.0](./skills/LICENSE.apache-2.0)）；
+`academic-humanizer` 来自 [AIScientists-Dev/academic-humanizer](https://github.com/AIScientists-Dev/academic-humanizer)
+（MIT，见 [skills/academic-humanizer/LICENSE](./skills/academic-humanizer/LICENSE)）。
+详见 [skills/NOTICE](./skills/NOTICE)。

@@ -25,7 +25,7 @@ export const inject = ['tools', 'systemPrompt'];
  */
 const METHOD_SECTION = `科研写作工作流（本模式的专用工具与技能）：
 1. 立题与检索：先用 literature_search 摸清已有工作与彼此的分歧，再用 web_fetch 读关键原文；跨引擎对照时可给 literature_search 传 provider（deepseek-official / deepseek-search-api / kimi-web-search，kimi 需 MOONSHOT_API_KEY）。每一处论据都记下可核验的出处。
-2. 内置技能：任务匹配时调用对应 skill——nature-academic-search（多源检索与引文核对）、nature-reader（全文精读/中英对照）、nature-paper-xray（单篇深读）、nature-writing（章节起草）、nature-polishing（语言润色）、nature-paper2ppt / nature-image2ppt（做 PPT）、nature-ref-verifier（参考文献核验）、nature-literature-pipeline（文献追踪流水线）、nature-experiment-log（实验日志）、researchwrite（项目申请书/开题报告）。
+2. 内置技能：任务匹配时调用对应 skill——nature-academic-search（多源检索与引文核对）、nature-reader（全文精读/中英对照）、nature-paper-xray（单篇深读）、nature-writing（章节起草）、nature-polishing（语言润色）、academic-humanizer（AI 辅助学术文稿的行文与语气打磨，不改数字/结果/引用）、nature-paper2ppt / nature-image2ppt（做 PPT）、nature-ref-verifier（参考文献核验）、nature-literature-pipeline（文献追踪流水线）、nature-experiment-log（实验日志）、researchwrite（项目申请书/开题报告）。
 3. 结构先行：先给出提纲（研究问题 / 每节的论点 / 支撑每个论点所需的证据 / 目标期刊与语言），与用户确认后再逐节成稿。
 4. 成稿落盘：用文件工具把稿件写进工作目录，一节一个标题或一个文件，便于迭代、比较与交付。
 5. 语言润色：用 paper_polish 逐段润色，改完再落盘；不要整篇一次性覆盖。

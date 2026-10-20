@@ -1,6 +1,6 @@
 {
   "name": "dsh-research-paper-mode",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Research-paper writing mode for DeepSeek Harness: an agent preset with multi-engine literature search (DeepSeek / Kimi), paper polishing, style checks, citation formatting and bundled nature-* writing skills.",
   "license": "MIT",
   "type": "module",

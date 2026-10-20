@@ -352,10 +352,10 @@ test('stripFrontmatter removes the YAML block and keeps the body', () => {
   assert.equal(stripFrontmatter('---\nname: x\ndescription: y\n---\n\n# Title\nbody\n'), '# Title\nbody');
   assert.equal(stripFrontmatter('no frontmatter'), 'no frontmatter');
 });
-test('the manifest covers the 11 vendored skills with unique valid names', () => {
-  assert.equal(BUNDLED_SKILLS.length, 11);
+test('the manifest covers the 12 vendored skills with unique valid names', () => {
+  assert.equal(BUNDLED_SKILLS.length, 12);
   const names = new Set(BUNDLED_SKILLS.map((skill) => skill.name));
-  assert.equal(names.size, 11);
+  assert.equal(names.size, 12);
   for (const skill of BUNDLED_SKILLS) {
     assert.match(skill.name, /^[a-z0-9]+(-[a-z0-9]+)*$/, skill.name);
     assert.ok(skill.description.length > 20, skill.name);
@@ -368,7 +368,7 @@ await atest('registerBundledSkills lists and loads every vendored skill', async 
   assert.equal(services.skills.providers.length, 1);
   const provider = services.skills.providers[0];
   const candidates = await provider.list();
-  assert.equal(candidates.length, 11);
+  assert.equal(candidates.length, 12);
   for (const candidate of candidates) {
     assert.equal(candidate.provider, 'research-paper-mode');
     assert.equal(candidate.source, 'bundled');
