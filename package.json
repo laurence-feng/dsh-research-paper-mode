@@ -1,0 +1,52 @@
+{
+  "name": "dsh-research-paper-mode",
+  "version": "1.0.1",
+  "description": "Research-paper writing mode for DeepSeek Harness: an agent preset with literature search, paper polishing, style checks and citation formatting tools.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "icon": "./icon.svg",
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "files": [
+    "index.js",
+    "lib/**",
+    "tools/**",
+    "locale/**",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "agent-preset",
+    "mode",
+    "research",
+    "academic-writing",
+    "paper",
+    "literature-search",
+    "citation",
+    "bibtex"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/laurence-feng/dsh-research-paper-mode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/laurence-feng/dsh-research-paper-mode/issues"
+  },
+  "homepage": "https://github.com/laurence-feng/dsh-research-paper-mode#readme"
+}
