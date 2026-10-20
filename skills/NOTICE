@@ -1,0 +1,15 @@
+Bundled third-party skills
+==========================
+
+The 11 skill directories in this folder (`nature-*`) are vendored verbatim from
+
+  https://github.com/Yuan1z0825/nature-skills
+
+Copyright the nature-skills authors and contributors.
+
+They are licensed under the Apache License, Version 2.0; a copy of the license
+ships alongside them in `LICENSE.apache-2.0`. They are distributed here
+unmodified except for the removal of VCS metadata. If a `NOTICE` file is added
+upstream, it must be retained here.
+
+All other files in this repository remain under the MIT license (see LICENSE).

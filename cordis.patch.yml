@@ -14,7 +14,7 @@
       config:
         id: research-paper
         name: 科研论文写作
-        description: 文献检索、文档润色、学术规范检查与参考文献格式化（中英文）
+        description: 多引擎文献检索（DeepSeek/Kimi）、内置 nature-* 科研技能、文档润色、学术规范检查与参考文献格式化（中英文）
         order: 5
         plugins:
           - id: persona

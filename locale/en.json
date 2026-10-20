@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Research Paper Writing Mode",
-    "description": "An agent preset for academic writing: literature search, document polishing, style checking and reference formatting."
+    "description": "An agent preset for academic writing: multi-engine literature search (DeepSeek/Kimi), bundled nature-* research skills, document polishing, style checking and reference formatting."
   }
 }

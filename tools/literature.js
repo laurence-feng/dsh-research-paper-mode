@@ -46,6 +46,27 @@ function clampInt(value, fallback, min, max) {
   return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
 }
 
+/**
+ * Run the search through an explicitly chosen provider from the web seam's
+ * registry, capping sources the way the seam itself would.
+ */
+async function searchWithProvider(web, providerId, request, signal) {
+  const registry = web.searchProviders;
+  const registered = registry instanceof Map ? [...registry.keys()] : [];
+  const provider = registry instanceof Map ? registry.get(providerId) : undefined;
+  if (provider === undefined) {
+    throw new Error(`web search provider "${providerId}" is not registered (registered: ${registered.join(', ') || 'none'}). Omit the provider argument to use the configured default.`);
+  }
+  if (typeof provider.available === 'function' && !provider.available()) {
+    throw new Error(`web search provider "${providerId}" is registered but unavailable; check its API key and endpoint configuration.`);
+  }
+  const result = await provider.search(request, signal);
+  if (Array.isArray(result?.sources) && Number.isInteger(request.maxResults) && result.sources.length > request.maxResults) {
+    return { ...result, sources: result.sources.slice(0, request.maxResults), truncated: true };
+  }
+  return result;
+}
+
 export function registerLiteratureSearch(ctx, config) {
   ctx.tools.register(defineTool({
     name: 'literature_search',
@@ -53,6 +74,8 @@ export function registerLiteratureSearch(ctx, config) {
       'Search the academic literature and return citable sources (title, URL, snippet, date).',
       'Use it before making any claim about prior work. Optionally narrow to repositories with',
       `scope (${KNOWN_SCOPES.join(', ')}) and to a publication-year window.`,
+      'The default search provider is the profile\'s configured one; pass provider to pick a specific',
+      'registered backend such as deepseek-official, deepseek-search-api, or kimi-web-search (Kimi needs a MOONSHOT_API_KEY).',
       'Set fetchExcerpts above 0 to also pull a short plain-text excerpt of the top hits; use web_fetch for a full paper.',
       'Every source must be verified by reading it before it is cited: never cite a title, author, year, venue or DOI that the returned sources do not show.',
     ].join(' '),
@@ -66,6 +89,10 @@ export function registerLiteratureSearch(ctx, config) {
         type: 'array',
         items: { type: 'string' },
         description: `Optional repository filters: ${KNOWN_SCOPES.join(', ')}.`,
+      },
+      provider: {
+        type: 'string',
+        description: 'Optional web search provider id (e.g. deepseek-official, deepseek-search-api, kimi-web-search). Omit to use the profile\'s configured default provider.',
       },
       yearFrom: { type: 'number', description: 'Earliest publication year to keep. Sources without a date are kept.' },
       yearTo: { type: 'number', description: 'Latest publication year to keep. Sources without a date are kept.' },
@@ -84,6 +111,7 @@ export function registerLiteratureSearch(ctx, config) {
         additionalProperties: false,
         properties: {
           query: { type: 'string', required: true },
+          provider: { type: 'string' },
           sources: {
             type: 'array',
             required: true,
@@ -107,7 +135,7 @@ export function registerLiteratureSearch(ctx, config) {
         },
       },
       render: (_args, value) => {
-        const lines = [`Found ${value.sources.length} source(s) for: ${value.query}`];
+        const lines = [`Found ${value.sources.length} source(s) for: ${value.query}${value.provider === undefined ? '' : ` (provider: ${value.provider})`}`];
         for (const [index, source] of value.sources.entries()) {
           const meta = [source.year ?? source.publishedAt, source.title ?? '(no title)'].filter(Boolean).join(' — ');
           lines.push(`${index + 1}. [${meta}](${source.url})`);
@@ -126,9 +154,13 @@ export function registerLiteratureSearch(ctx, config) {
       const notes = [];
       const query = buildQuery(args.query.trim(), args.scope ?? [], notes);
       const maxResults = clampInt(args.maxResults, config.searchMaxResults, 1, 25);
+      const providerId = typeof args.provider === 'string' && args.provider.trim().length > 0 ? args.provider.trim() : undefined;
 
-      const result = await web.search({ query, maxResults }, exec.signal);
+      const result = providerId === undefined
+        ? await web.search({ query, maxResults }, exec.signal)
+        : await searchWithProvider(web, providerId, { query, maxResults }, exec.signal);
       exec.signal.throwIfAborted();
+      if (providerId !== undefined) notes.push(`Search provider: ${providerId} (explicitly selected; not the configured default).`);
 
       const from = Number.isInteger(args.yearFrom) ? args.yearFrom : undefined;
       const to = Number.isInteger(args.yearTo) ? args.yearTo : undefined;
@@ -195,6 +227,7 @@ export function registerLiteratureSearch(ctx, config) {
 
       return {
         query,
+        ...(providerId === undefined ? {} : { provider: providerId }),
         sources: keep,
         ...(typeof result.content === 'string' && result.content.trim().length > 0 ? { answer: result.content.trim() } : {}),
         ...(notes.length > 0 ? { notes } : {}),

@@ -16,6 +16,8 @@ import { checkStyle } from '../lib/style.js';
 import { formatReferences, parseBibtex, parseAuthors, formatEntry } from '../lib/citation.js';
 import { buildPolishPrompt, parsePolishResult, streamPolish } from '../lib/polish.js';
 import { chunkText, detectLanguage, extractYear, htmlToText, normalizeUrl, truncate } from '../lib/text.js';
+import { BUNDLED_SKILLS, registerBundledSkills, stripFrontmatter } from '../lib/bundled-skills.js';
+import { KIMI_PROVIDER_ID, KimiSearchProvider, mapKimiResponse } from '../lib/kimi.js';
 
 let passed = 0;
 const failures = [];
@@ -57,8 +59,22 @@ const SEARCH_RESULTS = [
 
 function makeServices(overrides = {}) {
   const calls = { search: [], fetch: [], stream: [] };
+  const registryProvider = {
+    id: 'test-provider',
+    available: () => true,
+    async search(request, signal) {
+      calls.search.push({ ...request, via: 'test-provider' });
+      assert.equal(signal.aborted, false);
+      return { sources: SEARCH_RESULTS, truncated: false };
+    },
+  };
   const services = {
     web: {
+      searchProviders: new Map([['test-provider', registryProvider], ['unavailable-provider', { id: 'unavailable-provider', available: () => false }]]),
+      registerSearchProvider(provider) {
+        this.searchProviders.set(provider.id, provider);
+        return () => {};
+      },
       async search(request, signal) {
         calls.search.push(request);
         assert.equal(signal.aborted, false);
@@ -72,6 +88,12 @@ function makeServices(overrides = {}) {
           body: { kind: 'html', content: '<html><head><style>p{}</style></head><body><p>Excerpt &amp; body</p><script>bad()</script></body></html>' },
           truncated: false,
         };
+      },
+    },
+    skills: {
+      providers: [],
+      registerProvider(create) {
+        this.providers.push(create({ signal: new AbortController().signal }));
       },
     },
     llm: {
@@ -255,6 +277,113 @@ await atest('streamPolish surfaces provider failures', async () => {
   );
 });
 
+console.log('\nlib/kimi.js');
+test('mapKimiResponse maps results and drops malformed items', () => {
+  const result = mapKimiResponse({
+    search_results: [
+      { title: ' Paper A ', url: 'https://arxiv.org/abs/1', snippet: '  a snippet ', date: '2026-01-02', site_name: 'arXiv' },
+      { title: 'No URL', snippet: 'dropped' },
+      { title: 'Paper B', url: 'https://example.org/b', snippet: '', date: '', chunks: [{ text: 'best chunk', score: 2.5 }, { text: 'other', score: 0.1 }] },
+    ],
+  });
+  assert.equal(result.truncated, false);
+  assert.deepEqual(result.sources, [
+    { url: 'https://arxiv.org/abs/1', title: 'Paper A', snippet: 'a snippet', publishedAt: '2026-01-02' },
+    { url: 'https://example.org/b', title: 'Paper B', snippet: 'best chunk' },
+  ]);
+});
+test('mapKimiResponse rejects an invalid body instead of guessing', () => {
+  assert.throws(() => mapKimiResponse({}), /invalid response body/);
+  assert.throws(() => mapKimiResponse(null), /invalid response body/);
+});
+test('KimiSearchProvider availability needs a credential source and a valid URL', () => {
+  const withKey = new KimiSearchProvider(() => ({ apiKey: 'k', baseURL: 'https://api.moonshot.cn/v1', tier: 'basic', timeoutSeconds: 20 }));
+  assert.equal(withKey.available(), true);
+  const noKey = new KimiSearchProvider(() => ({ baseURL: 'https://api.moonshot.cn/v1', tier: 'basic', timeoutSeconds: 20 }));
+  assert.equal(noKey.available(), false);
+  const badUrl = new KimiSearchProvider(() => ({ apiKey: 'k', baseURL: 'not a url', tier: 'basic', timeoutSeconds: 20 }));
+  assert.equal(badUrl.available(), false);
+});
+await atest('KimiSearchProvider posts to the tier endpoint and maps results', async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init });
+    return {
+      ok: true,
+      json: async () => ({ search_results: [{ title: 'T', url: 'https://arxiv.org/abs/9', snippet: 's', date: '2026-03-01', chunks: [] }] }),
+    };
+  };
+  try {
+    const provider = new KimiSearchProvider(() => ({ apiKey: 'k', baseURL: 'https://api.moonshot.cn/v1', tier: 'pro', timeoutSeconds: 20 }));
+    const result = await provider.search({ query: 'transformer', maxResults: 30 }, new AbortController().signal);
+    assert.equal(requests[0].url, 'https://api.moonshot.cn/v1/tools/search_pro');
+    assert.equal(requests[0].init.headers.authorization, 'Bearer k');
+    assert.deepEqual(JSON.parse(requests[0].init.body), { text_query: 'transformer', limit: 20, timeout_seconds: 20 });
+    assert.equal(result.sources[0].url, 'https://arxiv.org/abs/9');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+await atest('KimiSearchProvider surfaces HTTP errors with the endpoint', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) });
+  try {
+    const provider = new KimiSearchProvider(() => ({ apiKey: 'k', baseURL: 'https://api.moonshot.cn/v1', tier: 'basic', timeoutSeconds: 20 }));
+    await assert.rejects(() => provider.search({ query: 'x' }, new AbortController().signal), /Kimi API error \(HTTP 401\).*tools\/search/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+await atest('KimiSearchProvider fails with setup guidance when no key exists', async () => {
+  const saved = Object.fromEntries(['MOONSHOT_API_KEY', 'KIMI_API_KEY'].map((key) => [key, process.env[key]]));
+  delete process.env.MOONSHOT_API_KEY;
+  delete process.env.KIMI_API_KEY;
+  try {
+    const provider = new KimiSearchProvider(() => ({ baseURL: 'https://api.moonshot.cn/v1', tier: 'basic', timeoutSeconds: 20 }));
+    await assert.rejects(() => provider.search({ query: 'x' }, new AbortController().signal), /MOONSHOT_API_KEY/);
+  } finally {
+    for (const [key, value] of Object.entries(saved)) if (value !== undefined) process.env[key] = value;
+  }
+});
+
+console.log('\nlib/bundled-skills.js');
+test('stripFrontmatter removes the YAML block and keeps the body', () => {
+  assert.equal(stripFrontmatter('---\nname: x\ndescription: y\n---\n\n# Title\nbody\n'), '# Title\nbody');
+  assert.equal(stripFrontmatter('no frontmatter'), 'no frontmatter');
+});
+test('the manifest covers the 11 vendored skills with unique valid names', () => {
+  assert.equal(BUNDLED_SKILLS.length, 11);
+  const names = new Set(BUNDLED_SKILLS.map((skill) => skill.name));
+  assert.equal(names.size, 11);
+  for (const skill of BUNDLED_SKILLS) {
+    assert.match(skill.name, /^[a-z0-9]+(-[a-z0-9]+)*$/, skill.name);
+    assert.ok(skill.description.length > 20, skill.name);
+  }
+});
+await atest('registerBundledSkills lists and loads every vendored skill', async () => {
+  const { services } = makeServices();
+  const { ctx } = makeContext(services);
+  assert.equal(registerBundledSkills(ctx), true);
+  assert.equal(services.skills.providers.length, 1);
+  const provider = services.skills.providers[0];
+  const candidates = await provider.list();
+  assert.equal(candidates.length, 11);
+  for (const candidate of candidates) {
+    assert.equal(candidate.provider, 'research-paper-mode');
+    assert.equal(candidate.source, 'bundled');
+    const skill = await provider.get(candidate, {});
+    assert.equal(skill.name, candidate.name);
+    assert.ok(skill.content.length > 100, `${candidate.name} content too short`);
+    assert.ok(!skill.content.startsWith('---'), `${candidate.name} frontmatter not stripped`);
+  }
+});
+test('registerBundledSkills degrades gracefully without a skills service', () => {
+  const { services } = makeServices({ skills: undefined });
+  const { ctx } = makeContext(services);
+  assert.equal(registerBundledSkills(ctx), false);
+});
+
 console.log('\nlib/citation.js');
 const BIB = `@article{vaswani2017attention,
   author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki},
@@ -344,17 +473,33 @@ test('resolveConfig bounds every value', () => {
   assert.equal(resolveConfig(undefined).searchMaxResults, 8);
   assert.equal(resolveConfig(null).polishMaxTokens, undefined);
 });
-test('apply registers the four tools and the workflow section', () => {
+test('resolveConfig resolves the kimi section with safe defaults', () => {
+  const defaults = resolveConfig(undefined);
+  assert.equal(defaults.kimiTier, 'basic');
+  assert.equal(defaults.kimiTimeoutSeconds, 20);
+  assert.equal(defaults.kimiApiKey, undefined);
+  assert.equal(defaults.kimiBaseURL, undefined);
+  const custom = resolveConfig({ kimiTier: 'pro', kimiTimeoutSeconds: 999, kimiApiKey: 'sk-x', kimiBaseURL: 'https://api.moonshot.ai/v1/' });
+  assert.equal(custom.kimiTier, 'pro');
+  assert.equal(custom.kimiTimeoutSeconds, 60);
+  assert.equal(custom.kimiApiKey, 'sk-x');
+  assert.equal(custom.kimiBaseURL, 'https://api.moonshot.ai/v1');
+  assert.equal(resolveConfig({ kimiBaseURL: 'not a url' }).kimiBaseURL, undefined);
+});
+test('apply registers the four tools, the kimi provider, the skills provider and the workflow section', () => {
   const { services } = makeServices();
   const { ctx, registered, sections } = makeContext(services);
   apply(ctx, {});
   assert.deepEqual(registered.map((definition) => definition.name).sort(), [
     'citation_format', 'literature_search', 'paper_polish', 'paper_style_check',
   ]);
+  assert.ok(services.web.searchProviders.has(KIMI_PROVIDER_ID), 'kimi provider was not registered on the web seam');
+  assert.equal(services.skills.providers.length, 1);
   assert.equal(sections.length, 1);
   assert.equal(sections[0].name, 'research-paper-method');
   assert.equal(sections[0].order, 1900);
   assert.match(sections[0].text, /literature_search/);
+  assert.match(sections[0].text, /nature-writing/);
 });
 test('every tool declares a valid parameter and output schema', () => {
   const { services } = makeServices();
@@ -398,6 +543,37 @@ await atest('fetches plain-text excerpts for the requested top hits', async () =
   assert.equal(calls.fetch.length, 1);
   assert.equal(value.sources[0].excerpt, 'Excerpt & body');
   assert.equal(value.sources[0].excerptStatus, 'HTTP 200');
+});
+await atest('routes to an explicitly chosen provider and echoes it', async () => {
+  const { services, calls } = makeServices();
+  const { ctx, registered } = makeContext(services);
+  apply(ctx, {});
+  const tool = toolNamed(registered, 'literature_search');
+  const value = await tool.execute({ query: 'transformers', provider: 'test-provider', maxResults: 4 }, EXEC);
+  assert.equal(calls.search[0].via, 'test-provider');
+  assert.equal(value.provider, 'test-provider');
+  assert.ok(value.notes.some((note) => /test-provider/.test(note)));
+  assert.ok(value.sources.length <= 4);
+});
+await atest('rejects an unknown provider id and lists the registered ones', async () => {
+  const { services } = makeServices();
+  const { ctx, registered } = makeContext(services);
+  apply(ctx, {});
+  const tool = toolNamed(registered, 'literature_search');
+  await assert.rejects(
+    () => tool.execute({ query: 'x', provider: 'nope' }, EXEC),
+    /"nope" is not registered.*test-provider/s,
+  );
+});
+await atest('rejects a registered but unavailable provider', async () => {
+  const { services } = makeServices();
+  const { ctx, registered } = makeContext(services);
+  apply(ctx, {});
+  const tool = toolNamed(registered, 'literature_search');
+  await assert.rejects(
+    () => tool.execute({ query: 'x', provider: 'unavailable-provider' }, EXEC),
+    /"unavailable-provider" is registered but unavailable/,
+  );
 });
 await atest('fails clearly without a web service', async () => {
   const { services } = makeServices({ web: undefined });
@@ -543,13 +719,13 @@ await atest('package.json declares the bundle patch and the icon', async () => {
   assert.ok(manifest.exports['.'] === './index.js');
 });
 await atest('the plugin imports nothing outside its own package', async () => {
-  const sources = ['../index.js', '../lib/tool-schema.js', '../lib/text.js', '../lib/style.js', '../lib/polish.js', '../lib/citation.js', '../tools/literature.js', '../tools/polish.js', '../tools/style.js', '../tools/citation.js'];
+  const sources = ['../index.js', '../lib/tool-schema.js', '../lib/text.js', '../lib/style.js', '../lib/polish.js', '../lib/citation.js', '../lib/bundled-skills.js', '../lib/kimi.js', '../tools/literature.js', '../tools/polish.js', '../tools/style.js', '../tools/citation.js'];
   for (const relative of sources) {
     const source = await readFile(new URL(relative, import.meta.url), 'utf8');
     for (const match of source.matchAll(/^\s*import[^'"]*['"]([^'"]+)['"]/gm)) {
       const specifier = match[1];
       assert.ok(
-        specifier.startsWith('.'),
+        specifier.startsWith('.') || specifier.startsWith('node:'),
         `${relative} imports "${specifier}"; a profile-installed bundle must stay self-contained`,
       );
     }

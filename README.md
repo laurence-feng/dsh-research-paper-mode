@@ -15,10 +15,12 @@ New-Session agent-preset selector.
 | 能力 | 实现 |
 |---|---|
 | 学术网络检索 | 预设内置 `web_search` / `web_fetch`（`@deepseek-ai/dsh-tool-web`） |
-| 文献检索 | 本包提供的 `literature_search`（学术站点限定、去重、年份过滤、可选正文摘录） |
+| 文献检索 | 本包提供的 `literature_search`（学术站点限定、去重、年份过滤、可选正文摘录、可选搜索引擎） |
+| 多引擎检索 | DeepSeek 官方联网搜索（Harness 内置 `deepseek-official` / `deepseek-search-api`）+ 本包内置的 Kimi 联网搜索（`kimi-web-search`，Moonshot 搜索 REST 接口） |
 | 文档润色 | 本包提供的 `paper_polish`（用当前会话模型改写，分段处理长文，返回修改说明） |
 | 学术规范自查 | 本包提供的 `paper_style_check`（中英双规则，确定性、可复现、带字符偏移） |
 | 参考文献格式化 | 本包提供的 `citation_format`（BibTeX → APA / IEEE / GB-T 7714 / Nature / MLA / Chicago） |
+| 内置科研技能 | 11 个随包安装的 nature-* skills（精读、写作、润色、做 PPT、核验引文、申请书等，见第 2.5 节） |
 | 写作工作流 | 一段写入系统提示词的方法论（检索 → 提纲 → 成稿 → 润色 → 自查 → 参考文献） |
 | 人设 | `@deepseek-ai/dsh-persona`：科研写作助手，含「不得编造文献」的引用纪律 |
 
@@ -30,10 +32,15 @@ New-Session agent-preset selector.
 
 ### `literature_search`
 ```
-literature_search({ query, scope, yearFrom, yearTo, maxResults, fetchExcerpts })
+literature_search({ query, scope, provider, yearFrom, yearTo, maxResults, fetchExcerpts })
 ```
 - `scope`：`arxiv`、`pubmed`、`pmc`、`semanticscholar`、`springer`、`sciencedirect`、
   `ieee`、`acm`、`cnki`、`wanfang`、`doaj`。多个 scope 会拼成 `site:` 限定。
+- `provider`：可选，显式指定搜索引擎（web seam 里注册的 provider id）：
+  - `deepseek-official`：DeepSeek 原生联网搜索（Harness 内置，走 `DEEPSEEK_API_KEY` 或 DeepSeek 账号登录）；
+  - `deepseek-search-api`：DeepSeek Search API（Harness 内置）；
+  - `kimi-web-search`：本包内置的 Kimi（Moonshot）联网搜索，见第 2.6 节。
+  不传则用 profile 配置的默认引擎。跨引擎对照同一 query 对核查文献很有用。
 - 结果按 URL 与标题去重，按 `publishedAt` 中解析出的年份过滤（无日期的条目保留），
   并在 `notes` 里说明丢弃了多少条、过滤窗口是什么。
 - `fetchExcerpts > 0` 时抓取前 N 条正文并抽成纯文本摘录（每条约一次 HTTP 请求）。
@@ -78,6 +85,47 @@ citation_format({ references, style, sort })
 - 非 BibTeX 输入（裸 URL、自由格式）**原样保留**并写入 `warnings`，
   绝不猜测缺失的年份、卷期或 DOI。
 
+## 2.5 内置科研技能（nature-* skills）
+
+模式随包内置 11 个技能，原样 vendor 自
+[Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)（Apache-2.0，
+见 `skills/NOTICE` 与 `skills/LICENSE.apache-2.0`）。装包即得，无需任何额外安装；
+选中本模式的会话会自动在技能目录里看到它们：
+
+| 技能 | 用途 |
+|---|---|
+| `nature-academic-search` | 多源文献检索、引文核对、参考文献管理、MeSH 策略、严格他引审计 |
+| `nature-reader` | 全文翻译 / 中英文对照 / 论文精读，生成出处可溯的 reader |
+| `nature-paper-xray` | 单篇论文深读：还原作者的真实起点与设计取舍，公式落到具体例子 |
+| `nature-writing` | 章节起草、论证重构、首次投稿材料 |
+| `nature-polishing` | 论文润色、学术翻译、正文精简、LaTeX 排版修复 |
+| `nature-paper2ppt` | 论文 / 读书笔记 → 中文学术 PPT（含图源与演讲备注） |
+| `nature-image2ppt` | 幻灯片截图 / 扫描 PDF → 可编辑 PPT |
+| `nature-ref-verifier` | 参考文献逐条多源交叉验证，输出结构化核验报告 |
+| `nature-literature-pipeline` | 文献追踪流水线：多源检索 → 六维打分 → 精读 → 投递 → 归档 |
+| `nature-experiment-log` | 实验日志（图片/语音/文字 → 带 frontmatter 的 Markdown） |
+| `researchwrite` | 科研项目申请书 / 开题报告（上游目录名 nature-proposal-writer，技能名沿上游兼容名 `researchwrite`） |
+
+这些技能的 `SKILL.md` 会按需引用各自目录下的 `references/`、`static/`、
+`scripts/` 等资源，全部已随包内置。
+
+## 2.6 Kimi 联网搜索（kimi-web-search）
+
+本包把 Kimi（Moonshot）的独立搜索 REST 接口注册为一个 web 搜索 provider
+（id `kimi-web-search`），供 `literature_search` 的 `provider` 参数和
+`web_search` 选用：
+
+- 接口：`POST {baseURL}/tools/search`（Basic）或 `/tools/search_pro`（Pro，
+  返回按相关性排序的正文片段），文档见
+  [Kimi 开放平台](https://platform.kimi.com/docs/api/tools-search)。
+- **需要一个 Moonshot API Key**：设环境变量 `MOONSHOT_API_KEY`（或 `KIMI_API_KEY`），
+  或在预设行配置 `kimiApiKey`。Key 在 <https://platform.kimi.com/console/api-keys> 创建。
+- 计费：Moonshot 按次计费（有结果才计费），见其定价页；未配置 key 时该 provider
+  自动不可用，不影响 DeepSeek 引擎与模式其余功能。
+- 端点默认 `https://api.moonshot.cn/v1`，可用配置 `kimiBaseURL` 或环境变量
+  `MOONSHOT_BASE_URL` 覆盖（如国际站 `https://api.moonshot.ai/v1`）。
+- `kimiTier: basic`（默认）/ `pro`；`kimiTimeoutSeconds` 默认 20（1-60）。
+
 ## 3. 配置
 
 预设行 `research-paper-tools` 没有声明 Config schema，未知键忽略、每个值都会被夹到安全区间。
@@ -92,6 +140,10 @@ citation_format({ references, style, sort })
     chunkChars: 6000          # 500-20000
     styleMaxIssues: 60        # 1-500
     # polishMaxTokens: 8192   # 不设则用模型默认
+    # kimiApiKey: sk-...      # 字面量 Kimi key；一般改用 MOONSHOT_API_KEY 环境变量
+    # kimiBaseURL: https://api.moonshot.cn/v1
+    # kimiTier: basic         # basic | pro
+    # kimiTimeoutSeconds: 20  # 1-60
 ```
 
 默认值写在 `index.js` 的 `resolveConfig()` 里。改配置后需要重新安装该 bundle 并重启 DSH。
@@ -143,12 +195,13 @@ Harness 自带的 `defineTool` 位于应用归档（`app.asar`）内的
 ## 6. 开发与验证
 
 ```bash
-node test/run.mjs     # 50 项测试，不需要 Harness 在运行
+node test/run.mjs     # 64 项测试，不需要 Harness 在运行
 ```
 
 `test/run.mjs` 用一个假的 Host context 驱动 `apply()`，覆盖：工具注册、
 参数校验、返回值形状校验、四条 `execute()` 路径（含网络服务的成功与缺失、
-模型不遵守 JSON 约定、分段、超限、无法解析的引用列表），以及 patch/manifest 结构。
+显式 provider 选择与回退、模型不遵守 JSON 约定、分段、超限、无法解析的引用列表）、
+Kimi 响应映射与错误处理、内置技能的列举与加载，以及 patch/manifest 结构。
 纯逻辑（`lib/`）没有 Harness 依赖，全部可直接单测。
 
 ## 7. 文件
@@ -156,12 +209,15 @@ node test/run.mjs     # 50 项测试，不需要 Harness 在运行
 ```
 package.json            bundle 清单（dsh.bundle.patch、icon、locale 导出）
 cordis.patch.yml        预设声明：人设、本包工具行、常规工具行
-index.js                插件入口：注册四个工具 + 写入工作流提示词段
+index.js                插件入口：注册四个工具 + kimi provider + 内置 skills + 工作流提示词段
 lib/tool-schema.js      defineTool 的自包含实现（见第 5 节）
 lib/text.js             HTML→文本、分块、语言判定、URL 归一化等
 lib/style.js            中英学术写作规则
 lib/polish.js           润色提示词构造、结果解析、流式调用
 lib/citation.js         BibTeX 解析与六种引用风格
+lib/kimi.js             Kimi（Moonshot）联网搜索 provider（见第 2.6 节）
+lib/bundled-skills.js   内置 skills 清单与 provider（见第 2.5 节）
+skills/                 11 个 vendored nature-* skills（Apache-2.0，见 skills/NOTICE）
 tools/*.js              四个工具的注册与执行
 locale/en.json, zh.json Plugin Manager 中显示的标题与描述
 icon.svg                模式图标
@@ -170,4 +226,7 @@ test/run.mjs            测试
 
 ## 8. 许可
 
-MIT，见 [LICENSE](./LICENSE)。
+本包自身代码为 MIT，见 [LICENSE](./LICENSE)。`skills/` 目录下的 11 个
+nature-* 技能来自 [Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)，
+按 Apache-2.0 许可分发，见 [skills/NOTICE](./skills/NOTICE) 与
+[skills/LICENSE.apache-2.0](./skills/LICENSE.apache-2.0)。
